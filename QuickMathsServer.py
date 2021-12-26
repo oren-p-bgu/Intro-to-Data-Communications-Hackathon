@@ -2,6 +2,10 @@
 import socket
 import time
 from scapy.all import get_if_list, get_if_addr
+import struct
+import selectors
+import threading
+
 class Server:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
@@ -14,6 +18,10 @@ class Server:
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+        self.tcp_src_port = 0
+        self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        self.tcp_socket.settimeout(1)
+
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
 
@@ -23,10 +31,30 @@ class Server:
     def setBroadcastDestIP(self, broadcast_dest_ip):
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
+    
+    def threaded_client(self, connection):
+        connection.send(str.encode('Welcome to the Servern'))
+        while True:
+            data = connection.recv(2048)
+            reply = 'Server Says: ' + data.decode('utf-8')
+            if not data:
+                break
+            connection.sendall(str.encode(reply))
+        connection.close()
 
     def startOffering(self):
-        msgFromServer       = "Test offer"
-        bytesToSend         = str.encode(msgFromServer)
+
+        self.tcp_socket.bind(('', self.tcp_src_port))
+
+        #There is one packet format used for all UDP communications:
+        #    Magic cookie (4 bytes): 0xabcddcba. The message is rejected if it doesn’t start with this cookie
+        #    Message type (1 byte): 0x2 for offer. No other message types are supported. 
+        #    Server port (2 bytes): The port on the server that the client is supposed to connect to over TCP (the IP address of the server is the same for the UDP and TCP connections, so it doesn't need to be sent).
+        format = "IBH"
+        magic_cookie = 0xabcddcba
+        message_type = 0x2
+        server_port = self.tcp_socket.getsockname()[1]
+        bytesToSend = struct.pack(format,magic_cookie,message_type,server_port)
 
         # Bind to address and ip
         self.broadcast_socket.bind(('', self.broadcast_src_port))
@@ -35,13 +63,31 @@ class Server:
 
         count = 1
 
+        ThreadCount = 0
+
+        self.tcp_socket.listen(2)
         # Start broadcasting
         while(True):
+            timedout = False
             print("Sending out offer " + str(count))
+
+            #Accept times out after 1 second so broadcast goes out every 1 second
             self.broadcast_socket.sendto(bytesToSend, (self.broadcast_dest_ip, self.broadcast_dest_port))
-            time.sleep(1)
             count = count + 1
-            
+            while(True):
+                try: 
+                    Client, address = self.tcp_socket.accept()
+                except socket.timeout:
+                    break
+                print('Connected to: ' + address[0] + ':' + str(address[1]))
+                threading.Thread(target=self.threaded_client, args=(Client, )).start()
+                ThreadCount += 1
+                if (ThreadCount == 2):
+                    print("Got two connections. Had enough! Quitting!")
+                    return
+        
+
+
 def promptChooseInterface():
     interface_names =get_if_list()
     indexed_interface_names = {}
