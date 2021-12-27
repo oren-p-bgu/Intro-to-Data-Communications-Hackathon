@@ -5,6 +5,46 @@ from scapy.all import get_if_list, get_if_addr
 import struct
 import selectors
 import threading
+import random
+
+class QuizGame:
+    DEFAULT_PARTICIPENTS = 2
+
+    def __init__(self):
+        self.participents = self.DEFAULT_PARTICIPENTS
+
+    def generateQuestion(self):
+        pass
+
+    def getQuestion(self):
+        return self.question
+
+    def checkAnswer(self, answer):
+        return (answer == self.answer)
+
+class QuickMathsGame(QuizGame):
+    def __init__(self):
+        super().__init__()
+        self.question_generator = QuickMathsQuestionGenerator()
+        self.generateQuestion()
+
+    def generateQuestion(self):
+        self.question, self.answer = self.question_generator.generate()
+
+class QuestionGenerator():
+    def generate(self):
+        return ("",0)
+
+class QuickMathsQuestionGenerator(QuestionGenerator):
+    def generate(self):
+        answer = random.randint(0,9)
+        number2 = random.randint(-9,9)
+        number1 = answer - number2
+        if (number2 >= 0):
+            question = f"How much is {number1}+{number2}?"
+        else:
+            question = f"How much is {number1}-{-1*number2}?"
+        return question, answer
 
 class Server:
 
@@ -22,6 +62,8 @@ class Server:
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         self.tcp_socket.settimeout(1)
 
+        self.game = QuickMathsGame()
+
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
 
@@ -33,10 +75,15 @@ class Server:
         self.broadcast_dest_ip = broadcast_dest_ip
     
     def threaded_client(self, connection):
-        connection.send(str.encode('Welcome to the Servern'))
+        prompt = self.game.getQuestion()
+        connection.sendall(str.encode(prompt))
         while True:
             data = connection.recv(2048)
-            reply = 'Server Says: ' + data.decode('utf-8')
+            answer = int(data.decode('utf-8'))
+            if (self.game.checkAnswer(answer)):
+                reply = 'Server Says: Correct answer!!!'
+            else:
+                reply = 'Server Says: Wrong answer!!!'
             if not data:
                 break
             connection.sendall(str.encode(reply))

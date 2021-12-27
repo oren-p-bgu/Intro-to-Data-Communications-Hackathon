@@ -64,6 +64,7 @@ class Client:
         except socket.error as e:
             print(str(e))
         Response = self.tcp_socket.recv(1024)
+        print(Response.decode('utf-8'))
         while True:
             Input = input('Say Something: ')
             self.tcp_socket.send(str.encode(Input))
