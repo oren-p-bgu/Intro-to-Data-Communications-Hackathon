@@ -33,7 +33,7 @@ class QuickMathsGame(QuizGame):
 
 class QuestionGenerator():
     def generate(self):
-        return ("",0)
+        return ("Prompt",0)
 
 class QuickMathsQuestionGenerator(QuestionGenerator):
     def generate(self):
@@ -64,6 +64,11 @@ class Server:
 
         self.game = QuickMathsGame()
 
+        self.winner = ""
+
+    def winnerWasDecided(self):
+        return (not self.winner == "")
+
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
 
@@ -74,20 +79,37 @@ class Server:
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
     
-    def threaded_client(self, connection):
+    def threaded_client(self, connection, condition):
         prompt = self.game.getQuestion()
         connection.sendall(str.encode(prompt))
-        while True:
-            data = connection.recv(2048)
-            answer = int(data.decode('utf-8'))
-            if (self.game.checkAnswer(answer)):
-                reply = 'Server Says: Correct answer!!!'
-            else:
-                reply = 'Server Says: Wrong answer!!!'
-            if not data:
-                break
-            connection.sendall(str.encode(reply))
-        connection.close()
+        connection.settimeout(0.1)
+        with condition:
+            while True:
+                try: 
+                    data = connection.recv(2048)
+                except socket.timeout:
+                    if (self.winnerWasDecided()):
+                        reply = 'Server Says: A winner was decided! Goodbye!'
+                        connection.sendall(str.encode(reply))
+                        connection.close()
+                        return
+                    else:
+                        continue
+                answer = int(data.decode('utf-8'))
+                if (self.game.checkAnswer(answer)):
+                    reply = 'Server Says: Correct answer!!!'
+                    connection.sendall(str.encode(reply))
+                    self.winner = "Test team"
+                    condition.notify()
+                    connection.close()
+                    return
+                else:
+                    reply = 'Server Says: Wrong answer!!!'
+                if not data:
+                    break
+                connection.sendall(str.encode(reply))
+            connection.close()
+
 
     def startOffering(self):
 
@@ -107,12 +129,13 @@ class Server:
         self.broadcast_socket.bind(('', self.broadcast_src_port))
 
         print("UDP server up and broadcasting")
+        self.tcp_socket.listen(2)
 
         count = 1
-
         ThreadCount = 0
+        condition = threading.Condition()
+        self.winner = ""
 
-        self.tcp_socket.listen(2)
         # Start broadcasting
         while(True):
             timedout = False
@@ -127,11 +150,19 @@ class Server:
                 except socket.timeout:
                     break
                 print('Connected to: ' + address[0] + ':' + str(address[1]))
-                threading.Thread(target=self.threaded_client, args=(Client, )).start()
+                threading.Thread(target=self.threaded_client, args=(Client,condition, )).start()
+
                 ThreadCount += 1
                 if (ThreadCount == 2):
-                    print("Got two connections. Had enough! Quitting!")
-                    return
+                    self.winner = ""
+                    print("Got two connections. Had enough! Waiting!")
+                    with condition:
+                        condition.wait_for(self.winnerWasDecided)
+                        count = 1
+                        ThreadCount = 0
+                        condition = threading.Condition()
+                        break
+                        
         
 
 
