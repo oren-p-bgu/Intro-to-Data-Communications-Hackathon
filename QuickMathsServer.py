@@ -16,13 +16,16 @@ class Status(enum.Enum):
 class QuizGame:
     DEFAULT_PARTICIPENTS = 2
 
-    def __init__(self, team_names):
+    def __init__(self):
         self.participents = self.DEFAULT_PARTICIPENTS
         self.team_status = {}
-        for team_name in team_names:
-            self.team_status[team_name] = Status.playing
-        self.team_names = team_names
         self.winner = ""
+
+    def addTeam(self,team_name):
+        self.team_status[team_name] = Status.playing
+
+    def doesTeamExist(self,team_name):
+        return (team_name in self.team_status.keys())
 
     def generateQuestion(self):
         pass
@@ -73,8 +76,8 @@ class QuizGame:
 
 
 class QuickMathsGame(QuizGame):
-    def __init__(self, team_names):
-        super().__init__(team_names)
+    def __init__(self):
+        super().__init__()
         self.question_generator = QuickMathsQuestionGenerator()
         self.generateQuestion()
 
@@ -126,8 +129,6 @@ class Server:
 
         self.tcp_src_port = 0
 
-        self.team_names = []
-
 
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
@@ -161,18 +162,16 @@ class Server:
         modifier = 1
         
         with condition:
-            while (fixed_team_name in self.team_names):
+            while (self.game.doesTeamExist(fixed_team_name)):
                 fixed_team_name = f"{team_name}({modifier})" 
                 modifier += 1
 
-            self.team_names.append(fixed_team_name)
+            self.game.addTeam(fixed_team_name)
 
-            print("TEST 1")
             condition.wait()
 
         welcome = self.welcomeMessage()
         prompt = self.game.getQuestion()
-        print(f"Sending welcome message to {connection.getpeername()}")
         connection.sendall(str.encode(welcome + prompt))
 
         connection.settimeout(0.1)
@@ -203,6 +202,8 @@ class Server:
 
 
     def startOffering(self):
+        self.game = QuickMathsGame()
+
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.broadcast_socket.bind(('', self.broadcast_src_port))
@@ -232,7 +233,6 @@ class Server:
         condition = threading.Condition()
 
         threads = []
-        self.team_names = []
 
         # Start broadcasting
         while(True):
@@ -260,14 +260,13 @@ class Server:
                 ThreadCount += 1
                 if (ThreadCount == 2):
                     self.winner = ""
-                    print("Got two connections. Had enough! Waiting!")
+                    print("Enough players connected to start game.")
                     self.broadcast_socket.close()
                     self.tcp_socket.close()
 
                     self.startGame(threads,condition)    
 
     def startGame(self, threads, condition):
-        self.game = QuickMathsGame(self.team_names)
         time.sleep(3)
         with condition:
             condition.notify_all()
