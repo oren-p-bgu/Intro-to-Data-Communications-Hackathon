@@ -4,6 +4,7 @@ from scapy.all import get_if_list, get_if_addr
 import struct
 import getch
 import sys
+import os
 import select
 import threading
 import multiprocessing
@@ -154,7 +155,10 @@ class input_thread (multiprocessing.Process):
     
     def run(self):
         print("Enter your answer: ")
-        input = getch.getche()
+        try:
+            input = getch.getche()
+        except OverflowError as e:
+            input = ""
         print("")
         self.sendData(input)
 
@@ -192,4 +196,11 @@ def main():
     client.start()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Interrupted')
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)

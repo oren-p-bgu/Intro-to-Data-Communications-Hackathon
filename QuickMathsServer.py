@@ -8,6 +8,8 @@ import selectors
 import threading
 import random
 import enum
+import sys
+import os
 
 class Colors:
     Black = "\u001b[30m"
@@ -114,6 +116,15 @@ class QuizGame:
             return True
         return False
 
+    def forfeit(self, team_name):
+        self.team_status[team_name] = Status.lost
+
+    def getNumOfParticipents(self):
+        return self.participents
+
+    def getTeamNames(self):
+        return self.team_status.keys()
+
 
     # Empty means draw
     def getWinner(self):
@@ -200,6 +211,8 @@ class Server:
 
         self.tcp_src_port = 0
 
+        self.history=[]
+
 
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
@@ -216,6 +229,39 @@ class Server:
     def announceWinner(self, connection):
         announcment = self.game.gameOverMessage()
         connection.sendall(str.encode(announcment))
+
+    def updateHistory(self):
+        winner = self.game.getWinner()
+        team_names = self.game.getTeamNames()
+        if (winner == ""):
+            for team_name in team_names:
+                index = next((i for i, item in enumerate(self.history) if item["name"] == team_name), None)
+                if (index == None):
+                    self.history.append({"name": team_name, "wins":0, "draws": 1, "losses" : 0})
+                else:
+                    self.history[index]["draws"] += 1
+        else:
+            for team_name in team_names:
+                if (team_name == winner):
+                    index = next((i for i, item in enumerate(self.history) if item["name"] == team_name), None)
+                    if (index == None):
+                        self.history.append({"name": team_name, "wins":1, "draws": 0, "losses" : 0})
+                    else:
+                        self.history[index]["wins"] += 1
+                    continue
+
+                index = next((i for i, item in enumerate(self.history) if item["name"] == team_name), None)
+                if (index == None):
+                    self.history.append({"name": team_name, "wins":0, "draws": 0, "losses" : 1})
+                else:
+                    self.history[index]["losses"] += 1
+
+    def printHistory(self):
+        record_format = "{0:20}|{1:10}|{2:10}|{3:10}"
+        print(record_format.format("Name", "Wins", "Draws", "Losses"))
+        for record in self.history:
+            print(record_format.format(record["name"],record["wins"],record["draws"],record["losses"]))
+            
 
     def manage_connection(self, connection, condition, player_number):
         connection.settimeout(1)
@@ -256,6 +302,9 @@ class Server:
                 else:
                     continue
             if not data:
+                # if client quit, automatically lost
+                self.game.forfeit(fixed_team_name)
+                connection.close()
                 break
             with condition:
                 try:
@@ -268,7 +317,7 @@ class Server:
                 self.announceWinner(connection)
                 connection.close()
                 return
-        connection.close()
+        
 
     
 
@@ -330,13 +379,14 @@ class Server:
                 cur_thread.start()
 
                 ThreadCount += 1
-                if (ThreadCount == 2):
+                if (ThreadCount == self.game.getNumOfParticipents()):
                     self.winner = ""
                     print(f"{Colors.Green}Enough players connected to start game.{Colors.Reset}")
                     self.broadcast_socket.close()
                     self.tcp_socket.close()
 
-                    self.startGame(threads,condition)    
+                    self.startGame(threads,condition) 
+                    return   
 
     def startGame(self, threads, condition):
         time.sleep(3)
@@ -346,6 +396,8 @@ class Server:
         for thread in threads:
             thread.join()
         printInfo("Game ended.")
+        self.updateHistory()
+        self.printHistory()
         self.startOffering()
                         
         
@@ -388,4 +440,11 @@ def main():
     server.startOffering()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Interrupted')
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
