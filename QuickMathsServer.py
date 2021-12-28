@@ -6,12 +6,23 @@ import struct
 import selectors
 import threading
 import random
+import enum
+
+class Status(enum.Enum):
+    lost=0
+    won=1
+    playing=2
 
 class QuizGame:
     DEFAULT_PARTICIPENTS = 2
 
-    def __init__(self):
+    def __init__(self, team_names):
         self.participents = self.DEFAULT_PARTICIPENTS
+        self.team_status = {}
+        for team_name in team_names:
+            self.team_status[team_name] = Status.playing
+        self.team_names = team_names
+        self.winner = ""
 
     def generateQuestion(self):
         pass
@@ -19,17 +30,65 @@ class QuizGame:
     def getQuestion(self):
         return self.question
 
-    def checkAnswer(self, answer):
+    def getAnswer(self):
+        return self.answer
+
+    def checkAnswer(self, team_name, answer):
+        if (answer == self.answer):
+            team_status[team_name] = Status.won
+        else:
+            team_status[team_name] = Status.lost
         return (answer == self.answer)
 
+    def winnerWasDecided(self):
+        remaining_players = 0
+        for team_name in self.team_status.keys():
+            if(self.team_status[team_name] == Status.won):
+                return True
+            if (self.team_status[team_name] == Status.playing):
+                remaining_players += 1
+                remaining_team = team_name
+        if (remaining_players == 1):
+            self.winner = remaining_team
+            return True
+        if (remaining_players == 0):
+            return True
+        return False
+
+
+    # Empty means draw
+    def getWinner(self):
+        return self.winner
+
+    def gameOverMessage(self):
+        message = f'Game over!\nThe correct answer was {self.answer}!\n\n'
+        if (self.getWinner() == ""):
+            message += f'The game resulted in a draw!'
+        else:
+            message += f'Cognratulations to the winner: {self.getWinner()}'
+        return message
+
+
+
 class QuickMathsGame(QuizGame):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, team_names):
+        super().__init__(team_names)
         self.question_generator = QuickMathsQuestionGenerator()
         self.generateQuestion()
 
     def generateQuestion(self):
         self.question, self.answer = self.question_generator.generate()
+
+    def welcomeMessage(self):
+        message = "Welcome to Quick Maths.\n"
+        count = 1
+        for team_name in team_status.keys():
+            message += f"Player {count}: {team_name}"
+            count += 1
+        message += "==\nPlease answer the following question as fast as you can:"
+        return message
+
+
 
 class QuestionGenerator():
     def generate(self):
@@ -46,6 +105,13 @@ class QuickMathsQuestionGenerator(QuestionGenerator):
             question = f"How much is {number1}-{-1*number2}?"
         return question, answer
 
+
+
+
+
+
+
+
 class Server:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
@@ -55,19 +121,11 @@ class Server:
         self.broadcast_src_port = 0         # 0 means bind will choose a random available port
         self.broadcast_dest_port = self.DEFAULT_BROADCAST_DEST_PORT
         self.broadcast_dest_ip = self.DEFAULT_BROADCAST_DEST_IP
-        self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
         self.tcp_src_port = 0
-        self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-        self.tcp_socket.settimeout(1)
 
-        self.game = QuickMathsGame()
+        self.team_names = []
 
-        self.winner = ""
-
-    def winnerWasDecided(self):
-        return (not self.winner == "")
 
     def setBroadcastSrcPort(self, broadcast_src_port):
         self.broadcast_src_port = broadcast_src_port
@@ -78,41 +136,60 @@ class Server:
     def setBroadcastDestIP(self, broadcast_dest_ip):
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
-    
-    def threaded_client(self, connection, condition):
+    def welcomeMessage(self):
+        return self.game.welcomeMessage(self.team_names)
+
+    def announceWinner(self, connection):
+        announcment = self.game.gameOverMessage()
+        connection.sendall(str.encode(announcment))
+
+    def manage_connection(self, connection, condition, player_number):
+        team_name = connection.recv(1024).decode('utf-8')
+        self.team_names.append(team_name)
+        with condition:
+            condition.wait()
+
+        welcome = self.welcomeMessage()
+        connection.sendall(str.encode(welcome))
+
         prompt = self.game.getQuestion()
         connection.sendall(str.encode(prompt))
+
         connection.settimeout(0.1)
-        with condition:
-            while True:
-                try: 
-                    data = connection.recv(2048)
-                except socket.timeout:
-                    if (self.winnerWasDecided()):
-                        reply = 'Server Says: A winner was decided! Goodbye!'
-                        connection.sendall(str.encode(reply))
-                        connection.close()
-                        return
-                    else:
-                        continue
-                answer = int(data.decode('utf-8'))
-                if (self.game.checkAnswer(answer)):
-                    reply = 'Server Says: Correct answer!!!'
-                    connection.sendall(str.encode(reply))
-                    self.winner = "Test team"
-                    condition.notify()
+    
+        while True:
+            try: 
+                data = connection.recv(2048)
+            except socket.timeout:
+                if (self.game.winnerWasDecided()):
+                    self.announceWinner(connection)
                     connection.close()
                     return
                 else:
-                    reply = 'Server Says: Wrong answer!!!'
-                if not data:
-                    break
-                connection.sendall(str.encode(reply))
-            connection.close()
+                    continue
+            if not data:
+                break
+            with condition:
+                answer = int(data.decode('utf-8'))
+                self.game.checkAnswer(answer)
+                condition.notify_all()
+                condition.wait_for(self.game.winnerWasDecided)
+                self.announceWinner(connection)
+                connection.close()
+                return
+
+            connection.sendall(str.encode(reply))
+        connection.close()
 
 
     def startOffering(self):
+        self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.broadcast_socket.bind(('', self.broadcast_src_port))
+        print(f"Server started, listening on IP address {self.broadcast_socket.getsockname()[0]}")
 
+        self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        self.tcp_socket.settimeout(1)
         self.tcp_socket.bind(('', self.tcp_src_port))
 
         #There is one packet format used for all UDP communications:
@@ -126,15 +203,16 @@ class Server:
         bytesToSend = struct.pack(format,magic_cookie,message_type,server_port)
 
         # Bind to address and ip
-        self.broadcast_socket.bind(('', self.broadcast_src_port))
 
-        print("UDP server up and broadcasting")
+
         self.tcp_socket.listen(2)
 
         count = 1
         ThreadCount = 0
         condition = threading.Condition()
-        self.winner = ""
+
+        threads = []
+        self.team_names = []
 
         # Start broadcasting
         while(True):
@@ -149,21 +227,44 @@ class Server:
                     Client, address = self.tcp_socket.accept()
                 except socket.timeout:
                     break
+                except KeyboardInterrupt:
+                    print("Shutting down server. Goodbye!")
+                    self.broadcast_socket.close()
+                    self.tcp_socket.close()
+                    return
                 print('Connected to: ' + address[0] + ':' + str(address[1]))
-                threading.Thread(target=self.threaded_client, args=(Client,condition, )).start()
+                cur_thread = threading.Thread(target=self.manage_connection, args=(Client,condition, ThreadCount))
+                threads.append(cur_thread)
+                cur_thread.start()
 
                 ThreadCount += 1
                 if (ThreadCount == 2):
                     self.winner = ""
                     print("Got two connections. Had enough! Waiting!")
-                    with condition:
-                        condition.wait_for(self.winnerWasDecided)
-                        count = 1
-                        ThreadCount = 0
-                        condition = threading.Condition()
-                        break
+                    self.broadcast_socket.close()
+                    self.tcp_socket.close()
+
+                    self.startGame(threads,condition)    
+
+    def startGame(self, threads, condition):
+        self.game = QuickMathsGame()
+
+        with condition:
+            time.sleep(3)
+            condition.notify_all()
+            condition.wait_for(self.game.winnerWasDecided)
+        print("Game ended.")
+        for thread in threads:
+            thread.join()
+        self.startOffering()
                         
         
+
+
+
+
+
+
 
 
 def promptChooseInterface():
@@ -192,8 +293,8 @@ def promptChooseInterface():
 
 def main():
     server = Server()
-    interface_addr = promptChooseInterface()
-    server.setBroadcastDestIP(interface_addr)
+    # interface_addr = promptChooseInterface()
+    # server.setBroadcastDestIP(interface_addr)
     server.startOffering()
 
 if __name__ == "__main__":
