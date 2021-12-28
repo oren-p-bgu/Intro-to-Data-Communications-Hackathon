@@ -8,6 +8,47 @@ import select
 import threading
 import multiprocessing
 
+class Colors:
+    Black = "\u001b[30m"
+    Red= "\u001b[31m"
+    Green= "\u001b[32m"
+    Yellow= "\u001b[33m"
+    Blue= "\u001b[34m"
+    Magenta= "\u001b[35m"
+    Cyan= "\u001b[36m"
+    White= "\u001b[37m"
+
+    BrightBlack = "\u001b[30;1m"
+    BrightRed= "\u001b[31;1m"
+    BrightGreen= "\u001b[32;1m"
+    BrightYellow= "\u001b[33;1m"
+    BrightBlue= "\u001b[34;1m"
+    BrightMagenta= "\u001b[35;1m"
+    BrightCyan= "\u001b[36;1m"
+    BrightWhite= "\u001b[37;1m"
+
+    BackgroundBlack = "\u001b[40m"
+    BackgroundRed= "\u001b[41m"
+    BackgroundGreen= "\u001b[42m"
+    BackgroundYellow= "\u001b[43m"
+    BackgroundBlue= "\u001b[44m"
+    BackgroundMagenta= "\u001b[45m"
+    BackgroundCyan= "\u001b[46m"
+    BackgroundWhite= "\u001b[47m"
+
+    BackgroundBrightBlack = "\u001b[40;1m"
+    BackgroundBrightRed= "\u001b[41;1m"
+    BackgroundBrightGreen= "\u001b[42;1m"
+    BackgroundBrightYellow= "\u001b[43;1m"
+    BackgroundBrightBlue= "\u001b[44;1m"
+    BackgroundBrightMagenta= "\u001b[45;1m"
+    BackgroundBrightCyan= "\u001b[46;1m"
+    BackgroundBrightWhite= "\u001b[47;1m"
+
+    Bold = "\u001b[1m"
+    
+    Reset= "\u001b[0m"
+
 class Client:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
@@ -43,7 +84,7 @@ class Client:
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1) 
         self.broadcast_socket.bind(serverAddressPort)
 
-        print("Client started, listening for offer requests...")
+        print(f"{Colors.Yellow}Client started, listening for offer requests...{Colors.Reset}")
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
 
@@ -59,7 +100,7 @@ class Client:
             message_type = 0x2
             var1, var2, var3 = struct.unpack(format,msgFromServer[0])
             if (var1 == magic_cookie and message_type == var2):
-                print(f"Received offer from {msgFromServer[1][0]}, attempting to connect...")
+                print(f"{Colors.Yellow}Received offer from {msgFromServer[1][0]}, attempting to connect...{Colors.Reset}")
                 self.broadcast_socket.close()
                 self.connectToServer(msgFromServer[1][0],var3)
                 break
@@ -72,7 +113,7 @@ class Client:
             self.tcp_socket.connect((ip_addr,port))
         except socket.error as e:
             print(str(e))
-        print(f"Connected to: {ip_addr}")
+        print(f"{Colors.Green}Connected to: {ip_addr}{Colors.Reset}")
         initial_message = "Test Team Name\n"
         self.tcp_socket.sendall(str.encode(initial_message))
         Response = self.tcp_socket.recv(2048)

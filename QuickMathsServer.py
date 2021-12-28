@@ -1,4 +1,5 @@
 
+from multiprocessing import Value
 import socket
 import time
 from scapy.all import get_if_list, get_if_addr
@@ -8,6 +9,48 @@ import threading
 import random
 import enum
 
+class Colors:
+    Black = "\u001b[30m"
+    Red= "\u001b[31m"
+    Green= "\u001b[32m"
+    Yellow= "\u001b[33m"
+    Blue= "\u001b[34m"
+    Magenta= "\u001b[35m"
+    Cyan= "\u001b[36m"
+    White= "\u001b[37m"
+
+    BrightBlack = "\u001b[30;1m"
+    BrightRed= "\u001b[31;1m"
+    BrightGreen= "\u001b[32;1m"
+    BrightYellow= "\u001b[33;1m"
+    BrightBlue= "\u001b[34;1m"
+    BrightMagenta= "\u001b[35;1m"
+    BrightCyan= "\u001b[36;1m"
+    BrightWhite= "\u001b[37;1m"
+
+    BackgroundBlack = "\u001b[40m"
+    BackgroundRed= "\u001b[41m"
+    BackgroundGreen= "\u001b[42m"
+    BackgroundYellow= "\u001b[43m"
+    BackgroundBlue= "\u001b[44m"
+    BackgroundMagenta= "\u001b[45m"
+    BackgroundCyan= "\u001b[46m"
+    BackgroundWhite= "\u001b[47m"
+
+    BackgroundBrightBlack = "\u001b[40;1m"
+    BackgroundBrightRed= "\u001b[41;1m"
+    BackgroundBrightGreen= "\u001b[42;1m"
+    BackgroundBrightYellow= "\u001b[43;1m"
+    BackgroundBrightBlue= "\u001b[44;1m"
+    BackgroundBrightMagenta= "\u001b[45;1m"
+    BackgroundBrightCyan= "\u001b[46;1m"
+    BackgroundBrightWhite= "\u001b[47;1m"
+
+    Bold = "\u001b[1m"
+    
+    Reset= "\u001b[0m"
+
+
 class Status(enum.Enum):
     lost=0
     won=1
@@ -15,11 +58,14 @@ class Status(enum.Enum):
 
 class QuizGame:
     DEFAULT_PARTICIPENTS = 2
+    DEFAULT_TIMEOUT = 10
 
     def __init__(self):
         self.participents = self.DEFAULT_PARTICIPENTS
         self.team_status = {}
         self.winner = ""
+        self.timeout = self.DEFAULT_TIMEOUT
+        self.start_time = time.time()
 
     def addTeam(self,team_name):
         self.team_status[team_name] = Status.playing
@@ -43,8 +89,16 @@ class QuizGame:
             self.team_status[team_name] = Status.lost
         return (answer == self.answer)
 
+    def start(self):
+        self.start_time = time.time()
+
+    def timeIsUp(self):
+        return ((time.time() - self.start_time) > self.timeout)
+
     # If a player was marked as won, they won. If only one player remains and all others lost, that player won. If all players lost, there is a draw.
     def winnerWasDecided(self):
+        if (self.timeIsUp()):
+            return True
         remaining_players = 0
         for team_name in self.team_status.keys():
             if(self.team_status[team_name] == Status.won):
@@ -66,11 +120,11 @@ class QuizGame:
         return self.winner
 
     def gameOverMessage(self):
-        message = f'Game over!\nThe correct answer was {self.answer}!\n\n'
+        message = f'{Colors.Bold}Game over!{Colors.Reset}\nThe correct answer was {Colors.Bold}{Colors.Green}{self.answer}{Colors.Reset}!\n\n'
         if (self.getWinner() == ""):
             message += f'The game resulted in a draw!'
         else:
-            message += f'Cognratulations to the winner: {self.getWinner()}'
+            message += f'Congratulations to the winner: {Colors.Bold}{Colors.Magenta}{self.getWinner()}{Colors.Reset}'
         return message
 
 
@@ -85,10 +139,26 @@ class QuickMathsGame(QuizGame):
         self.question, self.answer = self.question_generator.generate()
 
     def welcomeMessage(self):
-        message = "Welcome to Quick Maths.\n"
+        message = f"""{Colors.Blue}
+        
+ __        __   _                             _                    
+ \ \      / /__| | ___ ___  _ __ ___   ___   | |_ ___              
+  \ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \  | __/ _ \             
+   \ V  V /  __/ | (_| (_) | | | | | |  __/  | || (_) |            
+    \_/\_/ \___|_|\___\___/|_| |_| |_|\___|   \__\___/     
+              ___        _      _       __  __       _   _ 
+             / _ \ _   _(_) ___| | __  |  \/  | __ _| |_| |__  ___ 
+            | | | | | | | |/ __| |/ /  | |\/| |/ _` | __| '_ \/ __|
+            | |_| | |_| | | (__|   <   | |  | | (_| | |_| | | \__ \\
+             \__\_\\\\__,_|_|\___|_|\_\  |_|  |_|\__,_|\__|_| |_|___/
+                                                                  
+
+                                                                        
+        {Colors.Reset}\n"""
+
         count = 1
         for team_name in self.team_status.keys():
-            message += f"Player {count}: {team_name}\n"
+            message += f"Player {count}: {Colors.Magenta}{team_name}{Colors.Reset}\n"
             count += 1
         message += "==\nPlease answer the following question as fast as you can:\n"
         return message
@@ -105,14 +175,15 @@ class QuickMathsQuestionGenerator(QuestionGenerator):
         number2 = random.randint(-9,9)
         number1 = answer - number2
         if (number2 >= 0):
-            question = f"How much is {number1}+{number2}?"
+            question = f"{Colors.Blue}How much is {number1}+{number2}?{Colors.Reset}"
         else:
-            question = f"How much is {number1}-{-1*number2}?"
+            question = f"{Colors.Blue}How much is {number1}-{-1*number2}?{Colors.Reset}"
         return question, answer
 
 
 
-
+def printInfo(string):
+        print(f"{Colors.Yellow}{string}{Colors.Reset}")
 
 
 
@@ -149,9 +220,7 @@ class Server:
     def manage_connection(self, connection, condition, player_number):
         connection.settimeout(1)
         try:
-            print(f"Waiting for team name from {connection.getpeername()}")
             team_name = connection.recv(1024).decode('utf-8').rstrip()
-            print(f"Got team name: {team_name}")
         except socket.timeout:
             print(f"Didn't receive team name from {connection.getpeername()[0]}")
             self.announceWinner(connection)
@@ -189,16 +258,19 @@ class Server:
             if not data:
                 break
             with condition:
-                answer = int(data.decode('utf-8'))
+                try:
+                    answer = int(data.decode('utf-8'))
+                except ValueError as e:
+                    answer = data.decode('utf-8')
                 self.game.checkAnswer(fixed_team_name, answer)
                 condition.notify_all()
                 condition.wait_for(self.game.winnerWasDecided)
                 self.announceWinner(connection)
                 connection.close()
                 return
-
-            connection.sendall(str.encode(reply))
         connection.close()
+
+    
 
 
     def startOffering(self):
@@ -207,7 +279,7 @@ class Server:
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.broadcast_socket.bind(('', self.broadcast_src_port))
-        print(f"Server started, listening on IP address {self.broadcast_socket.getsockname()[0]}")
+        printInfo(f"Server started, listening on IP address {self.broadcast_socket.getsockname()[0]}")
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         self.tcp_socket.settimeout(1)
@@ -237,7 +309,7 @@ class Server:
         # Start broadcasting
         while(True):
             timedout = False
-            print("Sending out offer " + str(count))
+            printInfo(f"Sending out offer {count}")
 
             #Accept times out after 1 second so broadcast goes out every 1 second
             self.broadcast_socket.sendto(bytesToSend, (self.broadcast_dest_ip, self.broadcast_dest_port))
@@ -248,11 +320,11 @@ class Server:
                 except socket.timeout:
                     break
                 except KeyboardInterrupt:
-                    print("Shutting down server. Goodbye!")
+                    printInfo("Shutting down server. Goodbye!")
                     self.broadcast_socket.close()
                     self.tcp_socket.close()
                     return
-                print('Connected to: ' + address[0] + ':' + str(address[1]))
+                printInfo('Connected to: ' + address[0] + ':' + str(address[1]))
                 cur_thread = threading.Thread(target=self.manage_connection, args=(Client,condition, ThreadCount))
                 threads.append(cur_thread)
                 cur_thread.start()
@@ -260,7 +332,7 @@ class Server:
                 ThreadCount += 1
                 if (ThreadCount == 2):
                     self.winner = ""
-                    print("Enough players connected to start game.")
+                    print(f"{Colors.Green}Enough players connected to start game.{Colors.Reset}")
                     self.broadcast_socket.close()
                     self.tcp_socket.close()
 
@@ -270,10 +342,10 @@ class Server:
         time.sleep(3)
         with condition:
             condition.notify_all()
-            condition.wait_for(self.game.winnerWasDecided)
-        print("Game ended.")
+            self.game.start()
         for thread in threads:
             thread.join()
+        printInfo("Game ended.")
         self.startOffering()
                         
         
