@@ -35,15 +35,17 @@ class QuizGame:
 
     def checkAnswer(self, team_name, answer):
         if (answer == self.answer):
-            team_status[team_name] = Status.won
+            self.team_status[team_name] = Status.won
         else:
-            team_status[team_name] = Status.lost
+            self.team_status[team_name] = Status.lost
         return (answer == self.answer)
 
+    # If a player was marked as won, they won. If only one player remains and all others lost, that player won. If all players lost, there is a draw.
     def winnerWasDecided(self):
         remaining_players = 0
         for team_name in self.team_status.keys():
             if(self.team_status[team_name] == Status.won):
+                self.winner = team_name
                 return True
             if (self.team_status[team_name] == Status.playing):
                 remaining_players += 1
@@ -82,10 +84,10 @@ class QuickMathsGame(QuizGame):
     def welcomeMessage(self):
         message = "Welcome to Quick Maths.\n"
         count = 1
-        for team_name in team_status.keys():
-            message += f"Player {count}: {team_name}"
+        for team_name in self.team_status.keys():
+            message += f"Player {count}: {team_name}\n"
             count += 1
-        message += "==\nPlease answer the following question as fast as you can:"
+        message += "==\nPlease answer the following question as fast as you can:\n"
         return message
 
 
@@ -137,23 +139,41 @@ class Server:
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
     def welcomeMessage(self):
-        return self.game.welcomeMessage(self.team_names)
+        return self.game.welcomeMessage()
 
     def announceWinner(self, connection):
         announcment = self.game.gameOverMessage()
         connection.sendall(str.encode(announcment))
 
     def manage_connection(self, connection, condition, player_number):
-        team_name = connection.recv(1024).decode('utf-8')
-        self.team_names.append(team_name)
+        connection.settimeout(1)
+        try:
+            print(f"Waiting for team name from {connection.getpeername()}")
+            team_name = connection.recv(1024).decode('utf-8').rstrip()
+            print(f"Got team name: {team_name}")
+        except socket.timeout:
+            print(f"Didn't receive team name from {connection.getpeername()[0]}")
+            self.announceWinner(connection)
+            connection.close()
+            return
+        # Handle teams with the same name
+        fixed_team_name = team_name
+        modifier = 1
+        
         with condition:
+            while (fixed_team_name in self.team_names):
+                fixed_team_name = f"{team_name}({modifier})" 
+                modifier += 1
+
+            self.team_names.append(fixed_team_name)
+
+            print("TEST 1")
             condition.wait()
 
         welcome = self.welcomeMessage()
-        connection.sendall(str.encode(welcome))
-
         prompt = self.game.getQuestion()
-        connection.sendall(str.encode(prompt))
+        print(f"Sending welcome message to {connection.getpeername()}")
+        connection.sendall(str.encode(welcome + prompt))
 
         connection.settimeout(0.1)
     
@@ -171,7 +191,7 @@ class Server:
                 break
             with condition:
                 answer = int(data.decode('utf-8'))
-                self.game.checkAnswer(answer)
+                self.game.checkAnswer(fixed_team_name, answer)
                 condition.notify_all()
                 condition.wait_for(self.game.winnerWasDecided)
                 self.announceWinner(connection)
@@ -247,10 +267,9 @@ class Server:
                     self.startGame(threads,condition)    
 
     def startGame(self, threads, condition):
-        self.game = QuickMathsGame()
-
+        self.game = QuickMathsGame(self.team_names)
+        time.sleep(3)
         with condition:
-            time.sleep(3)
             condition.notify_all()
             condition.wait_for(self.game.winnerWasDecided)
         print("Game ended.")

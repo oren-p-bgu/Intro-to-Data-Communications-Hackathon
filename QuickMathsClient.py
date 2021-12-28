@@ -75,7 +75,7 @@ class Client:
         print(f"Connected to: {ip_addr}")
         initial_message = "Test Team Name\n"
         self.tcp_socket.sendall(str.encode(initial_message))
-        Response = self.tcp_socket.recv(1024)
+        Response = self.tcp_socket.recv(2048)
         if not Response:
             return
         #self.tcp_socket.settimeout(0.01)
@@ -87,7 +87,7 @@ class Client:
         
         
         while True:
-            Response = self.tcp_socket.recv(1024)
+            Response = self.tcp_socket.recv(2048)
             if not Response:
                 break
             print(Response.decode('utf-8'))
@@ -112,11 +112,10 @@ class input_thread (multiprocessing.Process):
             print(e)
     
     def run(self):
-        while(True):
-            print("Enter your answer: ")
-            input = getch.getche()
-            print("")
-            self.sendData(input)
+        print("Enter your answer: ")
+        input = getch.getche()
+        print("")
+        self.sendData(input)
 
 
 
