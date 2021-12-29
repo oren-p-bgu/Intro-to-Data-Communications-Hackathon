@@ -9,6 +9,7 @@ import select
 import threading
 import multiprocessing
 
+# Helper class to display color in output
 class Colors:
     Black = "\u001b[30m"
     Red= "\u001b[31m"
@@ -79,8 +80,14 @@ class Client:
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
 
+    # Start listening for offers over UDP.
+    # If a proper offer was found, tries to connect.
     def start(self):
         while(True):
+            # PROBLEM ======================
+            # Currently binding to IP "" which causes to listen on all interfaces.
+            # It's the only thing that works currently, setting to a specific interface IP doesn't receive broadcasts for whatever reason.
+            # Need help!
             serverAddressPort   = ("", self.broadcast_dest_port)
             bufferSize          = 1024
 
@@ -116,7 +123,9 @@ class Client:
                     print(f"{Colors.Red}Got a malformed offer from {msgFromServer[1][0]}.{Colors.Reset}")
                 
 
-
+    # Try to connect to a server and play a game.
+    # We send a team name first, then wait for a response (expecting a welcome message and the question prompt)
+    # Send our input and continue to listen for server data and printing it on screen, until the connection is closed.
     def connectToServer(self, ip_addr, port):
         self.tcp_socket.settimeout(20)
         try:
@@ -142,11 +151,10 @@ class Client:
             return
         #self.tcp_socket.settimeout(0.01)
         print(Response.decode('utf-8'))
-
-        self.constant_input_thread = input_thread()
-        self.constant_input_thread.setSocket(self.tcp_socket)
-        self.constant_input_thread.start()
         
+        self.constant_input_process = input_process()
+        self.constant_input_process.setSocket(self.tcp_socket)
+        self.constant_input_process.start()
         
         while True:
             try:
@@ -159,16 +167,16 @@ class Client:
                 print(f"{Colors.Yellow}{ip_addr} closed the connection.{Colors.Reset}")        
                 break
             print(Response.decode('utf-8'))
-            #Input = getch.getche()
-        self.constant_input_thread.kill()
+            
+        self.constant_input_process.kill()
         self.tcp_socket.close()
         return
 
-# Needed to use multiprocessing to avoid GIL lock when using getch
+# Needed to use multiprocessing instead of multithreading to avoid GIL lock when using getch, otherwise getch blocks the main thread as well.
 #https://stackoverflow.com/questions/24192171/python-using-threading-to-look-for-key-input-with-getch
-class input_thread (multiprocessing.Process):
+class input_process (multiprocessing.Process):
     def __init__(self):
-        super(input_thread, self).__init__()
+        super(input_process, self).__init__()
     
     def setSocket(self,tcp_socket):
         self.tcp_socket = tcp_socket
@@ -190,7 +198,7 @@ class input_thread (multiprocessing.Process):
 
 
 
-
+# Helper function to help choose an interface
 def promptChooseInterface():
     interface_names =get_if_list()
     indexed_interface_names = {}

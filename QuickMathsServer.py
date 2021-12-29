@@ -13,6 +13,7 @@ import os
 import ipaddress
 import operator
 
+# Helper class to display color in output
 class Colors:
     Black = "\u001b[30m"
     Red= "\u001b[31m"
@@ -55,11 +56,13 @@ class Colors:
     Reset= "\u001b[0m"
 
 
+# Player status indicators
 class Status(enum.Enum):
     lost=0
     won=1
     playing=2
 
+# Generic class for a timed quiz game with multiple participents
 class QuizGame:
     DEFAULT_PARTICIPENTS = 2
     DEFAULT_TIMEOUT = 10
@@ -86,6 +89,7 @@ class QuizGame:
     def getAnswer(self):
         return self.answer
 
+    # Checks if the given answer is correct, and updates the team's status accordingly (only one shot)
     def checkAnswer(self, team_name, answer):
         if (answer == self.answer):
             self.team_status[team_name] = Status.won
@@ -99,6 +103,7 @@ class QuizGame:
     def timeIsUp(self):
         return ((time.time() - self.start_time) > self.timeout)
 
+    # If time is up, there is a draw.
     # If a player was marked as won, they won. If only one player remains and all others lost, that player won. If all players lost, there is a draw.
     def winnerWasDecided(self):
         if (self.timeIsUp()):
@@ -141,7 +146,7 @@ class QuizGame:
         return message
 
 
-
+# Quiz game with short single digits answers to simple addition and subtraction questions
 class QuickMathsGame(QuizGame):
     def __init__(self):
         super().__init__()
@@ -177,11 +182,12 @@ class QuickMathsGame(QuizGame):
         return message
 
 
-
+# Question generator for quiz games
 class QuestionGenerator():
     def generate(self):
         return ("Prompt",0)
 
+# Question generator for math quiz games
 class QuickMathsQuestionGenerator(QuestionGenerator):
     def generate(self):
         answer = random.randint(0,9)
@@ -194,13 +200,13 @@ class QuickMathsQuestionGenerator(QuestionGenerator):
         return question, answer
 
 
-
+# Formatting shortcut
 def printInfo(string):
         print(f"{Colors.Yellow}{string}{Colors.Reset}")
 
 
 
-
+# A server advertising itself on UDP and accepting client via TCP, up to the game's number of participents.
 class Server:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
@@ -209,6 +215,7 @@ class Server:
     DEFAULT_INTERFACE_ADDR = "127.0.0.1"
     DEFAULT_TEAM_NAME = "Hackstreet Boys"
     DEFAULT_HIGHSCORE_LIMIT = 5
+    DEFAULT_DELAY_BEFORE_START_GAME = 3
 
 
     def __init__(self):
@@ -226,6 +233,8 @@ class Server:
         self.team_name = Server.DEFAULT_TEAM_NAME
 
         self.highscore_limit = Server.DEFAULT_HIGHSCORE_LIMIT
+
+        self.delay_before_start_game = Server.DEFAULT_DELAY_BEFORE_START_GAME
 
 
     def setInterface(self, interface_name, interface_addr):
@@ -246,11 +255,13 @@ class Server:
     def welcomeMessage(self):
         return f"You're playing on: {Colors.Magenta}{self.team_name}{Colors.Reset} Server\n{self.game.welcomeMessage()}"
 
+    # Send to a client the closing message of the game and the current highscores.
     def announceWinner(self, connection):
         self.updateHistory()
         announcment = f"{self.game.gameOverMessage()}\n{self.getHistory()}"
         connection.sendall(str.encode(announcment))
 
+    # Update the history of the games with the data from the current game.
     def updateHistory(self):
         if (self.history_updated):
             return
@@ -280,6 +291,7 @@ class Server:
                     self.history[index]["losses"] += 1
         self.history_updated = True
 
+    # Returns a string of the formatted displayable version of the highscores
     def getHistory(self):
         record_format = Colors.Magenta + "{0:30}" + Colors.Reset + "|" + Colors.Green + "{1:7}" + Colors.Reset + "|" + Colors.Yellow + "{2:7}" + Colors.Reset + "|" + Colors.Red + "{3:7}" + Colors.Reset + "\n"
         history = f"\n{Colors.BackgroundYellow}~ Highscores ~{Colors.Reset}\n" + record_format.format("Name", "Wins", "Draws", "Losses")
@@ -295,6 +307,13 @@ class Server:
                 break
         return history
 
+    # The thread run for each client.
+    # Started when a connection is made, expects to get a team name as the first data from the client.
+    # Waits until condition is notified to signify the game has begun.
+    # Sends the client the game's welcome messageand waits for it's answer.
+    # If the client answers on time, it's answer is checked and it waits for all other players to finish.
+    # If not, they lose.
+    # Once the game has ended, announces the winner, closes the connection and exits.
     def manage_connection(self, connection, condition, player_number):
         connection.settimeout(1)
         try:
@@ -354,6 +373,9 @@ class Server:
     
 
 
+    # Prepare for a game and start broadcasting a game is available.
+    # Listen on TCP for incoming requests to play, allow up to the number of participents allowed by the game.
+    # Once enough players have connected, close UDP and TCP advertising sockets and start game.
     def startOffering(self):
         self.game = QuickMathsGame()
 
@@ -367,6 +389,7 @@ class Server:
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         self.tcp_socket.settimeout(1)
+        
         self.tcp_socket.bind(('', self.tcp_src_port))
 
         #There is one packet format used for all UDP communications:
@@ -423,9 +446,12 @@ class Server:
                     self.startGame(threads,condition) 
                     return   
 
+    # Start a game with the connected clients.
+    # Wait self.delay_before_start_game seconds after everyone connected before starting.
+    # Once game ended, display highscores on the server and start advertising a new game.
     def startGame(self, threads, condition):
         self.history_updated = False
-        time.sleep(3)
+        time.sleep(self.delay_before_start_game)
         with condition:
             condition.notify_all()
             self.game.start()
@@ -443,7 +469,7 @@ class Server:
 
 
 
-
+# Helper function to help choose an interface
 def promptChooseInterface():
     interface_names =get_if_list()
     indexed_interface_names = {}
