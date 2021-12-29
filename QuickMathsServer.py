@@ -277,8 +277,8 @@ class Server:
         self.history_updated = True
 
     def getHistory(self):
-        record_format = "{0:20}|{1:10}|{2:10}|{3:10}\n"
-        history = record_format.format("Name", "Wins", "Draws", "Losses")
+        record_format = Colors.Magenta + "{0:30}" + Colors.Reset + "|" + Colors.Green + "{1:7}" + Colors.Reset + "|" + Colors.Yellow + "{2:7}" + Colors.Reset + "|" + Colors.Red + "{3:7}" + Colors.Reset + "\n"
+        history = f"\n{Colors.BackgroundYellow}~ Highscores ~{Colors.Reset}\n" + record_format.format("Name", "Wins", "Draws", "Losses")
         for record in self.history:
             history += record_format.format(record["name"],record["wins"],record["draws"],record["losses"])
         return history

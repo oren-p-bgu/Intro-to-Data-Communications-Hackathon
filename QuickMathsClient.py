@@ -81,7 +81,7 @@ class Client:
 
     def start(self):
         while(True):
-            serverAddressPort   = (b"0", self.broadcast_dest_port)
+            serverAddressPort   = ("", self.broadcast_dest_port)
             bufferSize          = 1024
 
             # Create a UDP socket at client side
