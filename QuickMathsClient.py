@@ -77,58 +77,73 @@ class Client:
         self.broadcast_dest_ip = broadcast_dest_ip
 
     def start(self):
-        msgFromClient       = "Hello UDP Server"
-
-        bytesToSend         = str.encode(msgFromClient)
-
-        serverAddressPort   = (b"0", self.broadcast_dest_port)
-
-        bufferSize          = 1024
-
-
-        # Create a UDP socket at client side
-        self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1) 
-        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
-
-        self.broadcast_socket.bind(serverAddressPort)
-        print(self.broadcast_socket.getsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST))
-
-        print(f"{Colors.Yellow}Client started, listening for offer requests...{Colors.Reset}")
-
-        self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-
-
         while(True):
-            msgFromServer = self.broadcast_socket.recvfrom(bufferSize)
-            #There is one packet format used for all UDP communications:
-            #    Magic cookie (4 bytes): 0xabcddcba. The message is rejected if it doesn’t start with this cookie
-            #    Message type (1 byte): 0x2 for offer. No other message types are supported. 
-            #    Server port (2 bytes): The port on the server that the client is supposed to connect to over TCP (the IP address of the server is the same for the UDP and TCP connections, so it doesn't need to be sent).
-            format = "IBH"
-            magic_cookie = 0xabcddcba
-            message_type = 0x2
-            var1, var2, var3 = struct.unpack(format,msgFromServer[0])
-            if (var1 == magic_cookie and message_type == var2):
-                print(f"{Colors.Yellow}Received offer from {msgFromServer[1][0]}, attempting to connect...{Colors.Reset}")
-                self.broadcast_socket.close()
-                self.connectToServer(msgFromServer[1][0],var3)
-                break
-            else:
-                print("Got an invalid offer.")
+            msgFromClient       = "Hello UDP Server"
+
+            bytesToSend         = str.encode(msgFromClient)
+
+            serverAddressPort   = (b"0", self.broadcast_dest_port)
+
+            bufferSize          = 1024
+
+
+            # Create a UDP socket at client side
+            self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+            self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1) 
+            self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            #self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
+
+            self.broadcast_socket.bind(serverAddressPort)
+
+            print(f"{Colors.Yellow}Client started, listening for offer requests...{Colors.Reset}")
+
+            self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+
+
+            while(True):
+                msgFromServer = self.broadcast_socket.recvfrom(bufferSize)
+                #There is one packet format used for all UDP communications:
+                #    Magic cookie (4 bytes): 0xabcddcba. The message is rejected if it doesn’t start with this cookie
+                #    Message type (1 byte): 0x2 for offer. No other message types are supported. 
+                #    Server port (2 bytes): The port on the server that the client is supposed to connect to over TCP (the IP address of the server is the same for the UDP and TCP connections, so it doesn't need to be sent).
+                format = "IBH"
+                magic_cookie = 0xabcddcba
+                message_type = 0x2
+                try:
+                    var1, var2, var3 = struct.unpack(format,msgFromServer[0])
+                    if (var1 == magic_cookie and message_type == var2):
+                        print(f"{Colors.Yellow}Received offer from {msgFromServer[1][0]}, attempting to connect...{Colors.Reset}")
+                        self.connectToServer(msgFromServer[1][0],var3)
+                        break
+                    else:
+                        print(f"{Colors.Red}Got an invalid offer from {msgFromServer[1][0]}.{Colors.Reset}")
+                except struct.error as e:
+                    print(f"{Colors.Red}Got a malformed offer from {msgFromServer[1][0]}.{Colors.Reset}")
+                
 
 
     def connectToServer(self, ip_addr, port):
+        self.tcp_socket.settimeout(20)
         try:
             self.tcp_socket.connect((ip_addr,port))
         except socket.error as e:
+            print(f"{Colors.Red}Couldn't connect to: {ip_addr}{Colors.Reset}")            
             print(str(e))
+            return
+        self.broadcast_socket.close()
         print(f"{Colors.Green}Connected to: {ip_addr}{Colors.Reset}")
         initial_message = "Test Team Name\n"
-        self.tcp_socket.sendall(str.encode(initial_message))
-        Response = self.tcp_socket.recv(2048)
+        try:
+            self.tcp_socket.sendall(str.encode(initial_message))
+            self.tcp_socket.settimeout(None)
+            print(f"{Colors.Green}Waiting for game to start...{Colors.Reset}")
+            Response = self.tcp_socket.recv(2048)
+        except socket.error as e:
+            print(f"{Colors.Red}Connection error with: {ip_addr}{Colors.Reset}")            
+            print(str(e))
+            return
         if not Response:
+            print(f"{Colors.Yellow}{ip_addr} closed the connection.{Colors.Reset}")        
             return
         #self.tcp_socket.settimeout(0.01)
         print(Response.decode('utf-8'))
@@ -139,14 +154,20 @@ class Client:
         
         
         while True:
-            Response = self.tcp_socket.recv(2048)
+            try:
+                Response = self.tcp_socket.recv(2048)
+            except socket.error as e:
+                print(f"{Colors.Red}Connection error with: {ip_addr}{Colors.Reset}")            
+                print(str(e))
+                break
             if not Response:
+                print(f"{Colors.Yellow}{ip_addr} closed the connection.{Colors.Reset}")        
                 break
             print(Response.decode('utf-8'))
             #Input = getch.getche()
         self.constant_input_thread.kill()
         self.tcp_socket.close()
-        self.start()
+        return
 
 # Needed to use multiprocessing to avoid GIL lock when using getch
 #https://stackoverflow.com/questions/24192171/python-using-threading-to-look-for-key-input-with-getch

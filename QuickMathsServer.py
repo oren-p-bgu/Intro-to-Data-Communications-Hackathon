@@ -337,7 +337,7 @@ class Server:
 
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
+        #self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
 
         self.broadcast_socket.bind((self.interface_addr, self.broadcast_src_port))
         
