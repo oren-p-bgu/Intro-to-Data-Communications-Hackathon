@@ -56,6 +56,7 @@ class Client:
     DEFAULT_BROADCAST_DEST_IP = "127.0.0.1"
     DEFAULT_INTERFACE_NAME = "lo"
     DEFAULT_INTERFACE_ADDR = "127.0.0.1"
+    DEFAULT_TEAM_NAME = "Hackstreet Boys"
 
     def __init__(self):
         self.broadcast_dest_port = self.DEFAULT_BROADCAST_DEST_PORT
@@ -67,6 +68,8 @@ class Client:
         self.tcp_src_port = 0
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+
+        self.team_name = Client.DEFAULT_TEAM_NAME
         
     def setInterface(self, interface_name, interface_addr):
         self.interface_name = interface_name
@@ -78,27 +81,19 @@ class Client:
 
     def start(self):
         while(True):
-            msgFromClient       = "Hello UDP Server"
-
-            bytesToSend         = str.encode(msgFromClient)
-
             serverAddressPort   = (b"0", self.broadcast_dest_port)
-
             bufferSize          = 1024
-
 
             # Create a UDP socket at client side
             self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
             self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1) 
             self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             #self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
-
             self.broadcast_socket.bind(serverAddressPort)
 
             print(f"{Colors.Yellow}Client started, listening for offer requests...{Colors.Reset}")
 
             self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-
 
             while(True):
                 msgFromServer = self.broadcast_socket.recvfrom(bufferSize)
@@ -132,7 +127,7 @@ class Client:
             return
         self.broadcast_socket.close()
         print(f"{Colors.Green}Connected to: {ip_addr}{Colors.Reset}")
-        initial_message = "Test Team Name\n"
+        initial_message = self.team_name + "\n"
         try:
             self.tcp_socket.sendall(str.encode(initial_message))
             self.tcp_socket.settimeout(None)

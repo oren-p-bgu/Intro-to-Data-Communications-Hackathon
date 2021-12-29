@@ -206,6 +206,8 @@ class Server:
     DEFAULT_BROADCAST_DEST_IP = "127.0.0.1"
     DEFAULT_INTERFACE_NAME = "lo"
     DEFAULT_INTERFACE_ADDR = "127.0.0.1"
+    DEFAULT_TEAM_NAME = "Hackstreet Boys"
+
 
     def __init__(self):
         self.broadcast_src_port = 0         # 0 means bind will choose a random available port
@@ -217,6 +219,10 @@ class Server:
         self.interface_addr = Server.DEFAULT_INTERFACE_ADDR
 
         self.history=[]
+        self.history_updated = True
+
+        self.team_name = Server.DEFAULT_TEAM_NAME
+
 
     def setInterface(self, interface_name, interface_addr):
         self.interface_name = interface_name
@@ -234,13 +240,16 @@ class Server:
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
         self.broadcast_dest_ip = broadcast_dest_ip
     def welcomeMessage(self):
-        return self.game.welcomeMessage()
+        return f"You're playing on: {Colors.Magenta}{self.team_name}{Colors.Reset} Server\n{self.game.welcomeMessage()}"
 
     def announceWinner(self, connection):
-        announcment = self.game.gameOverMessage()
+        self.updateHistory()
+        announcment = f"{self.game.gameOverMessage()}\n{self.getHistory()}"
         connection.sendall(str.encode(announcment))
 
     def updateHistory(self):
+        if (self.history_updated):
+            return
         winner = self.game.getWinner()
         team_names = self.game.getTeamNames()
         if (winner == ""):
@@ -265,13 +274,14 @@ class Server:
                     self.history.append({"name": team_name, "wins":0, "draws": 0, "losses" : 1})
                 else:
                     self.history[index]["losses"] += 1
+        self.history_updated = True
 
-    def printHistory(self):
-        record_format = "{0:20}|{1:10}|{2:10}|{3:10}"
-        print(record_format.format("Name", "Wins", "Draws", "Losses"))
+    def getHistory(self):
+        record_format = "{0:20}|{1:10}|{2:10}|{3:10}\n"
+        history = record_format.format("Name", "Wins", "Draws", "Losses")
         for record in self.history:
-            print(record_format.format(record["name"],record["wins"],record["draws"],record["losses"]))
-            
+            history += record_format.format(record["name"],record["wins"],record["draws"],record["losses"])
+        return history
 
     def manage_connection(self, connection, condition, player_number):
         connection.settimeout(1)
@@ -402,6 +412,7 @@ class Server:
                     return   
 
     def startGame(self, threads, condition):
+        self.history_updated = False
         time.sleep(3)
         with condition:
             condition.notify_all()
@@ -409,8 +420,7 @@ class Server:
         for thread in threads:
             thread.join()
         printInfo("Game ended.")
-        self.updateHistory()
-        self.printHistory()
+        print(self.getHistory())
         self.startOffering()
                         
         
