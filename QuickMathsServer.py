@@ -11,6 +11,7 @@ import enum
 import sys
 import os
 import ipaddress
+import operator
 
 class Colors:
     Black = "\u001b[30m"
@@ -207,6 +208,7 @@ class Server:
     DEFAULT_INTERFACE_NAME = "lo"
     DEFAULT_INTERFACE_ADDR = "127.0.0.1"
     DEFAULT_TEAM_NAME = "Hackstreet Boys"
+    DEFAULT_HIGHSCORE_LIMIT = 5
 
 
     def __init__(self):
@@ -222,6 +224,8 @@ class Server:
         self.history_updated = True
 
         self.team_name = Server.DEFAULT_TEAM_NAME
+
+        self.highscore_limit = Server.DEFAULT_HIGHSCORE_LIMIT
 
 
     def setInterface(self, interface_name, interface_addr):
@@ -279,8 +283,16 @@ class Server:
     def getHistory(self):
         record_format = Colors.Magenta + "{0:30}" + Colors.Reset + "|" + Colors.Green + "{1:7}" + Colors.Reset + "|" + Colors.Yellow + "{2:7}" + Colors.Reset + "|" + Colors.Red + "{3:7}" + Colors.Reset + "\n"
         history = f"\n{Colors.BackgroundYellow}~ Highscores ~{Colors.Reset}\n" + record_format.format("Name", "Wins", "Draws", "Losses")
-        for record in self.history:
-            history += record_format.format(record["name"],record["wins"],record["draws"],record["losses"])
+        position = 1
+        sorted_history = sorted(self.history, key=lambda d: d['losses'])
+        sorted_history = sorted(self.history,key=lambda d: d['draws'], reverse=True)
+        sorted_history = sorted(self.history,key=lambda d: d['wins'], reverse=True)
+
+        for record in sorted_history:
+            history += record_format.format(str(position) + ". " + record["name"],record["wins"],record["draws"],record["losses"])
+            position += 1
+            if (position > self.highscore_limit):
+                break
         return history
 
     def manage_connection(self, connection, condition, player_number):
