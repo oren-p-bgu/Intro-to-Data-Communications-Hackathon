@@ -10,6 +10,7 @@ import random
 import enum
 import sys
 import os
+import ipaddress
 
 class Colors:
     Black = "\u001b[30m"
@@ -203,15 +204,24 @@ class Server:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
     DEFAULT_BROADCAST_DEST_IP = "127.0.0.1"
+    DEFAULT_INTERFACE_NAME = "lo"
+    DEFAULT_INTERFACE_ADDR = "127.0.0.1"
 
     def __init__(self):
         self.broadcast_src_port = 0         # 0 means bind will choose a random available port
-        self.broadcast_dest_port = self.DEFAULT_BROADCAST_DEST_PORT
-        self.broadcast_dest_ip = self.DEFAULT_BROADCAST_DEST_IP
+        self.broadcast_dest_port = Server.DEFAULT_BROADCAST_DEST_PORT
+        self.broadcast_dest_ip = Server.DEFAULT_BROADCAST_DEST_IP
 
         self.tcp_src_port = 0
+        self.interface_name = Server.DEFAULT_INTERFACE_NAME
+        self.interface_addr = Server.DEFAULT_INTERFACE_ADDR
 
         self.history=[]
+
+    def setInterface(self, interface_name, interface_addr):
+        self.interface_name = interface_name
+        self.interface_addr = interface_addr
+
 
 
     def setBroadcastSrcPort(self, broadcast_src_port):
@@ -327,7 +337,10 @@ class Server:
 
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.broadcast_socket.bind(('', self.broadcast_src_port))
+        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
+
+        self.broadcast_socket.bind((self.interface_addr, self.broadcast_src_port))
+        
         printInfo(f"Server started, listening on IP address {self.broadcast_socket.getsockname()[0]}")
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
@@ -361,7 +374,7 @@ class Server:
             printInfo(f"Sending out offer {count}")
 
             #Accept times out after 1 second so broadcast goes out every 1 second
-            self.broadcast_socket.sendto(bytesToSend, (self.broadcast_dest_ip, self.broadcast_dest_port))
+            self.broadcast_socket.sendto(bytesToSend, ("<broadcast>", self.broadcast_dest_port))
             count = count + 1
             while(True):
                 try: 
@@ -431,12 +444,12 @@ def promptChooseInterface():
             pass
         print("Invalid choice. Please try again.")
 
-    return get_if_addr(indexed_interface_names.get(choice))
+    return indexed_interface_names.get(choice), get_if_addr(indexed_interface_names.get(choice))
 
 def main():
     server = Server()
-    # interface_addr = promptChooseInterface()
-    # server.setBroadcastDestIP(interface_addr)
+    interface_name, interface_addr = promptChooseInterface()
+    server.setInterface(interface_name , interface_addr)
     server.startOffering()
 
 if __name__ == "__main__":

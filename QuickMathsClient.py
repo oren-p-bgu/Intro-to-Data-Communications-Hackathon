@@ -54,17 +54,23 @@ class Client:
 
     DEFAULT_BROADCAST_DEST_PORT = 13117
     DEFAULT_BROADCAST_DEST_IP = "127.0.0.1"
+    DEFAULT_INTERFACE_NAME = "lo"
+    DEFAULT_INTERFACE_ADDR = "127.0.0.1"
 
     def __init__(self):
         self.broadcast_dest_port = self.DEFAULT_BROADCAST_DEST_PORT
         self.broadcast_dest_ip = self.DEFAULT_BROADCAST_DEST_IP
         
+        self.interface_name = Client.DEFAULT_INTERFACE_NAME
+        self.interface_addr = Client.DEFAULT_INTERFACE_ADDR
 
         self.tcp_src_port = 0
 
         self.tcp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         
-
+    def setInterface(self, interface_name, interface_addr):
+        self.interface_name = interface_name
+        self.interface_addr = interface_addr
 
     def setBroadcastDestIP(self, broadcast_dest_ip):
         print("Setting broadcast destination IP to " + broadcast_dest_ip)
@@ -75,7 +81,7 @@ class Client:
 
         bytesToSend         = str.encode(msgFromClient)
 
-        serverAddressPort   = (self.broadcast_dest_ip, self.broadcast_dest_port)
+        serverAddressPort   = (b"0", self.broadcast_dest_port)
 
         bufferSize          = 1024
 
@@ -83,7 +89,11 @@ class Client:
         # Create a UDP socket at client side
         self.broadcast_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1) 
+        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,  str(self.interface_name + '\0').encode('utf-8'))
+
         self.broadcast_socket.bind(serverAddressPort)
+        print(self.broadcast_socket.getsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST))
 
         print(f"{Colors.Yellow}Client started, listening for offer requests...{Colors.Reset}")
 
@@ -187,12 +197,12 @@ def promptChooseInterface():
             pass
         print("Invalid choice. Please try again.")
 
-    return get_if_addr(indexed_interface_names.get(choice))
+    return indexed_interface_names.get(choice), get_if_addr(indexed_interface_names.get(choice))
 
 def main():
     client = Client()
-    # interface_addr = promptChooseInterface()
-    # client.setBroadcastDestIP(interface_addr)
+    interface_name, interface_addr = promptChooseInterface()
+    client.setInterface(interface_name , interface_addr)
     client.start()
 
 if __name__ == "__main__":
